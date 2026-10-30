@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>PotholeWatch – detect, report, prioritise</title>
+<style>
+:root{--bg:#f6f5f1;--card:#fff;--tx:#1c1b18;--mu:#6b6860;--bd:#e2dfd6;--ac:#d9480f;--ok:#2f9e44;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#161512;--card:#211f1b;--tx:#f1efe8;--mu:#9d998d;--bd:#36332c;--ac:#ff7a3d}}
+:root[data-theme="dark"]{--bg:#161512;--card:#211f1b;--tx:#f1efe8;--mu:#9d998d;--bd:#36332c;--ac:#ff7a3d}
+*{box-sizing:border-box}html{scroll-padding-top:env(safe-area-inset-top,0px)}
+body{margin:0;background:var(--bg);color:var(--tx);font:15px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+.w{max-width:860px;margin:0 auto;padding:16px}
+h1{font-size:24px;margin:4px 0 2px}h2{font-size:17px;margin:0 0 8px}p{margin:6px 0}
+.sub{color:var(--mu);margin-bottom:12px}
+nav{display:flex;gap:6px;margin:12px 0;overflow-x:auto}
+nav button{flex:1;min-width:max-content}
+button,.btn{font:inherit;border:1px solid var(--bd);background:var(--card);color:var(--tx);padding:8px 12px;border-radius:8px;cursor:pointer}
+button.on,button.pri{background:var(--ac);color:#fff;border-color:var(--ac)}
+button:disabled{opacity:.5}
+.card{background:var(--card);border:1px solid var(--bd);border-radius:12px;padding:14px;margin-bottom:12px}
+label{display:block;font-size:13px;color:var(--mu);margin:8px 0 2px}
+input,select,textarea{font:inherit;width:100%;padding:8px;border:1px solid var(--bd);border-radius:8px;background:var(--bg);color:var(--tx)}
+.row{display:flex;gap:8px;flex-wrap:wrap}.row>*{flex:1;min-width:130px}
+.bar{height:14px;background:var(--bd);border-radius:7px;overflow:hidden}.bar>i{display:block;height:100%;width:0;background:var(--ac)}
+.pill{display:inline-block;padding:1px 8px;border-radius:99px;font-size:12px;font-weight:600;color:#fff}
+.t-Critical{background:#c92a2a}.t-High{background:#e8590c}.t-Medium{background:#e0a100}.t-Low{background:#2f9e44}
+.item{display:flex;gap:10px;padding:10px 0;border-top:1px solid var(--bd);align-items:flex-start}
+.item img{width:56px;height:56px;object-fit:cover;border-radius:8px}
+.item .m{flex:1;min-width:0}.small{font-size:12.5px;color:var(--mu)}
+.item button{padding:4px 8px;font-size:12.5px}
+.scroll{overflow-x:auto}svg{width:100%;height:auto;display:block;background:var(--bg);border-radius:8px}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:8px;margin-bottom:12px}
+.stats div{background:var(--card);border:1px solid var(--bd);border-radius:10px;padding:8px 10px}.stats b{display:block;font-size:20px}
+#toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(16px + env(safe-area-inset-bottom,0px));background:#222;color:#fff;padding:8px 14px;border-radius:8px;opacity:0;transition:.2s;pointer-events:none}
+#toast.s{opacity:1}
+textarea.csv{height:110px;font:12px monospace}
+.hide{display:none}
+</style>
+</head>
+<body>
+<div class="w">
+<h1>🕳️ PotholeWatch</h1>
+<div class="sub">Detect potholes with your phone's motion sensor, report them with a photo, and let the app rank what to fix first.</div>
+<div class="stats" id="stats"></div>
+<nav>
+<button data-t="detect" class="on">1 · Detect</button><button data-t="report">2 · Report</button><button data-t="triage">3 · Triage</button><button data-t="about">About</button>
+</nav>
+
+<section id="detect">
+<div class="card">
+<h2>Drive-by detection</h2>
+<p class="small">Mount the phone in a car or on a bike. A sudden vertical jolt plus a GPS fix is logged as a candidate pothole. No phone sensors here? Run the simulator.</p>
+<div class="row" style="margin-top:8px">
+<button id="bStart" class="pri">Start sensing</button>
+<button id="bSim">Simulate a drive</button>
+<button id="bStop" disabled>Stop</button>
+</div>
+<label>Jolt threshold: <span id="thv">6</span> m/s² (lower = more sensitive)</label>
+<input type="range" id="th" min="3" max="15" step="0.5" value="6">
+<label>Live shock level</label><div class="bar"><i id="lv"></i></div>
+<p class="small" id="dst">Idle.</p>
+</div>
+</section>
+
+<section id="report" class="hide">
+<div class="card">
+<h2>Report a pothole</h2>
+<div class="row">
+<div><label>Latitude</label><input id="lat" inputmode="decimal"></div>
+<div><label>Longitude</label><input id="lon" inputmode="decimal"></div>
+</div>
+<button id="bLoc" style="margin-top:8px">📍 Use my location</button>
+<div class="row">
+<div><label>Approx. depth (cm)</label><input id="dep" type="number" min="1" max="30" value="5"></div>
+<div><label>Approx. width (cm)</label><input id="wid" type="number" min="5" max="300" value="40"></div>
+</div>
+<div class="row">
+<div><label>Road type</label><select id="road"><option value="residential">Residential street</option><option value="arterial" selected>Main / arterial road</option><option value="highway">Highway / flyover</option></select></div>
+<div><label>Traffic</label><select id="traf"><option value="low">Low</option><option value="med" selected>Medium</option><option value="high">High / two-wheeler heavy</option></select></div>
+</div>
+<label>Photo (optional, resized on-device)</label><input id="pic" type="file" accept="image/*" capture="environment">
+<label>Note</label><input id="note" placeholder="e.g. near the bus stop, filled with water">
+<button id="bAdd" class="pri" style="margin-top:12px;width:100%">Submit report</button>
+</div>
+</section>
+
+<section id="triage" class="hide">
+<div class="card"><h2>Priority map</h2><div class="scroll"><svg id="map" viewBox="0 0 600 300"></svg></div>
+<p class="small">Dots are coloured by priority. Reports within 15 m are merged into one pothole and boost its score.</p></div>
+<div class="card"><div class="row" style="margin-bottom:6px"><button id="bDemo">Load demo data</button><button id="bCsv">Export CSV</button><button id="bClr">Clear all</button></div>
+<textarea class="csv hide" id="csv" readonly></textarea><button id="bCopy" class="hide" style="margin-top:6px">Copy CSV</button>
+<div id="list"></div></div>
+</section>
+
+<section id="about" class="hide">
+<div class="card">
+<h2>The problem</h2>
+<p>Potholes wreck vehicles and cause crashes, especially for two-wheelers. Most roads get fixed only after enough people complain, and the complaints arrive as unstructured calls, photos and tweets with no way to tell a dangerous crater from a cosmetic crack. Surveys are slow and expensive, so repair crews often work in the wrong order.</p>
+<h2 style="margin-top:14px">The solution</h2>
+<p>PotholeWatch is a three-step pipeline that runs entirely in the browser:</p>
+<p><b>Detect.</b> The phone's accelerometer is compared to a running baseline. A jolt above the threshold, debounced to one per 1.5 s, is tagged with the current GPS fix. Jolt strength gives a rough depth estimate.</p>
+<p><b>Report.</b> Citizens add depth, width, road type and traffic, plus an optional photo that is shrunk on-device.</p>
+<p><b>Triage.</b> Each pothole gets a 0–100 score: <code>(0.6·depth/10 + 0.4·width/80) × road factor × traffic factor</code>, then extra points for duplicate reports. Tiers: Critical ≥70 (fix within 24 h), High ≥45 (7 days), Medium ≥25 (30 days), Low (monitor). The list is sorted so a crew can work top-down.</p>
+<h2 style="margin-top:14px">Honest limitations</h2>
+<p>Thresholds and weights are hand-tuned guesses, not calibrated on real road data. Speed bumps, rail crossings and rough phone mounting cause false positives. Data lives only in this browser (localStorage), so there is no shared backend or authority hand-off yet.</p>
+<h2 style="margin-top:14px">Next steps</h2>
+<p>Speed-normalise jolts and filter known bumps, add a shared database with municipal ticketing, and train a small vision model on photos to verify size automatically.</p>
+</div>
+</section>
+</div>
+<div id="toast"></div>
+<script>
+const $=s=>document.querySelector(s);
+let R=[];try{R=JSON.parse(localStorage.getItem('pw')||'[]')}catch(e){}
+const save=()=>{try{localStorage.setItem('pw',JSON.stringify(R))}catch(e){toast('Storage full – photo too large')}};
+function toast(m){const t=$('#toast');t.textContent=m;t.className='s';setTimeout(()=>t.className='',2200)}
+const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const clamp=(v,a=0,b=1)=>Math.max(a,Math.min(b,v));
+function hav(a,b,c,d){const r=Math.PI/180,x=(c-a)*r,y=(d-b)*r*Math.cos(a*r);return 6371000*Math.hypot(x,y)}
+const RF={residential:.9,arterial:1.15,highway:1.4},TF={low:.8,med:1,high:1.25};
+function score(r){const b=.6*clamp(r.dep/10)+.4*clamp(r.wid/80);return Math.round(clamp(b*RF[r.road]*TF[r.traf]*70,0,100))}
+const tier=s=>s>=70?'Critical':s>=45?'High':s>=25?'Medium':'Low';
+const SLA={Critical:'fix ≤24 h',High:'fix ≤7 days',Medium:'fix ≤30 days',Low:'monitor'};
+function clusters(){const cs=[];R.forEach(r=>{const c=cs.find(c=>hav(c.lat,c.lon,r.lat,r.lon)<15);c?c.items.push(r):cs.push({lat:r.lat,lon:r.lon,items:[r]})});
+cs.forEach(c=>{c.top=c.items.reduce((a,b)=>score(b)>score(a)?b:a);c.score=Math.min(100,score(c.top)+Math.min(15,5*(c.items.length-1)));c.tier=tier(c.score);c.status=c.top.status||'Open'});
+return cs.sort((a,b)=>b.score-a.score)}
+/* tabs */
+document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>{document.querySelectorAll('nav button').forEach(x=>x.classList.toggle('on',x===b));
+['detect','report','triage','about'].forEach(t=>$('#'+t).classList.toggle('hide',t!==b.dataset.t));if(b.dataset.t==='triage')draw()});
+/* position */
+let pos=null,wid=null;
+function startGPS(){if(!navigator.geolocation){return false}
+wid=navigator.geolocation.watchPosition(p=>{pos={lat:p.coords.latitude,lon:p.coords.longitude}},()=>{},{enableHighAccuracy:true});return true}
+$('#bLoc').onclick=()=>{if(!navigator.geolocation)return toast('Geolocation unavailable');navigator.geolocation.getCurrentPosition(p=>{$('#lat').value=p.coords.latitude.toFixed(6);$('#lon').value=p.coords.longitude.toFixed(6)},()=>toast('Location denied'))};
+/* detection */
+let base=9.81,last=0,sim=null,sensing=false,hits=0;
+const th=$('#th');th.oninput=()=>$('#thv').textContent=th.value;
+function addDetected(dev,p){const dep=+clamp(dev/2.5,1,12).toFixed(1);
+R.push({id:Date.now()+Math.random(),t:Date.now(),lat:p.lat,lon:p.lon,dep,wid:30,road:'arterial',traf:'med',src:'sensor',note:'jolt '+dev.toFixed(1)+' m/s²',status:'Open'});save();hits++;stats();
+$('#dst').textContent=hits+' candidate pothole(s) logged this session. Last jolt: '+dev.toFixed(1)+' m/s²'}
+function onMotion(e){const a=e.accelerationIncludingGravity;if(!a)return;const m=Math.hypot(a.x||0,a.y||0,a.z||0);base=base*.95+m*.05;const dev=Math.abs(m-base);
+$('#lv').style.width=clamp(dev/15)*100+'%';const now=Date.now();
+if(dev>+th.value&&now-last>1500){last=now;if(pos)addDetected(dev,pos);else $('#dst').textContent='Jolt seen but no GPS fix yet…'}}
+async function startSense(){if(typeof DeviceMotionEvent==='undefined'){return toast('No motion sensor – use the simulator')}
+try{if(DeviceMotionEvent.requestPermission){const r=await DeviceMotionEvent.requestPermission();if(r!=='granted')return toast('Motion permission denied')}}catch(e){return toast('Permission error')}
+if(!startGPS())toast('No GPS – detections will wait for a fix');
+addEventListener('devicemotion',onMotion);sensing=true;ui(true);$('#dst').textContent='Sensing… drive over some rough road.'}
+$('#bStart').onclick=startSense;
+$('#bSim').onclick=()=>{const go=(c)=>{let i=0,lat=c.lat,lon=c.lon;ui(true);$('#dst').textContent='Simulating a 60-step drive…';
+sim=setInterval(()=>{i++;lat+=.00006;lon+=.00004+Math.sin(i/6)*.00001;const dev=Math.random()<.3?4+Math.random()*10:Math.random()*2;
+$('#lv').style.width=clamp(dev/15)*100+'%';if(dev>+th.value)addDetected(dev,{lat:lat+(Math.random()-.5)*2e-5,lon});if(i>=60)stop()},350)};
+if(navigator.geolocation)navigator.geolocation.getCurrentPosition(p=>go({lat:p.coords.latitude,lon:p.coords.longitude}),()=>go({lat:23.0,lon:72.5}),{timeout:2500});else go({lat:23.0,lon:72.5})};
+function ui(on){$('#bStop').disabled=!on;$('#bStart').disabled=on;$('#bSim').disabled=on}
+function stop(){removeEventListener('devicemotion',onMotion);clearInterval(sim);if(wid!=null)navigator.geolocation.clearWatch(wid);wid=null;sim=null;ui(false);$('#lv').style.width='0';$('#dst').textContent='Stopped. '+hits+' logged – see the Triage tab.'}
+$('#bStop').onclick=stop;
+/* manual report */
+function shrink(file){return new Promise(res=>{const im=new Image();im.onload=()=>{const s=320/Math.max(im.width,im.height,320),c=document.createElement('canvas');c.width=im.width*s;c.height=im.height*s;c.getContext('2d').drawImage(im,0,0,c.width,c.height);res(c.toDataURL('image/jpeg',.6))};im.onerror=()=>res(null);im.src=URL.createObjectURL(file)})}
+$('#bAdd').onclick=async()=>{const lat=parseFloat($('#lat').value),lon=parseFloat($('#lon').value);
+if(!isFinite(lat)||!isFinite(lon)||Math.abs(lat)>90||Math.abs(lon)>180)return toast('Enter a valid latitude and longitude');
+const f=$('#pic').files[0];const photo=f?await shrink(f):null;
+R.push({id:Date.now()+Math.random(),t:Date.now(),lat,lon,dep:+$('#dep').value||5,wid:+$('#wid').value||40,road:$('#road').value,traf:$('#traf').value,src:'citizen',note:$('#note').value,photo,status:'Open'});
+save();stats();toast('Reported – see Triage');$('#note').value='';$('#pic').value=''};
+/* triage */
+function draw(){const cs=clusters();const svg=$('#map');
+if(!cs.length){svg.innerHTML='<text x="300" y="150" text-anchor="middle" fill="currentColor" opacity=".5">No potholes yet – load demo data or detect some</text>';$('#list').innerHTML='';return}
+const la=cs.map(c=>c.lat),lo=cs.map(c=>c.lon),cl=Math.cos(la[0]*Math.PI/180);
+const minLo=Math.min(...lo),maxLa=Math.max(...la),wx=Math.max((Math.max(...lo)-minLo)*cl,1e-5),wy=Math.max(maxLa-Math.min(...la),1e-5),sc=Math.min(540/wx,240/wy);
+const P=c=>[30+(c.lon-minLo)*cl*sc,30+(maxLa-c.lat)*sc];const col={Critical:'#c92a2a',High:'#e8590c',Medium:'#e0a100',Low:'#2f9e44'};
+svg.innerHTML=cs.map((c,i)=>{const [x,y]=P(c);return `<g opacity="${c.status==='Fixed'?.3:1}"><circle cx="${x}" cy="${y}" r="${7+c.score/12}" fill="${col[c.tier]}" opacity=".85"><title>#${i+1} ${c.tier} (${c.score})</title></circle><text x="${x}" y="${y+4}" text-anchor="middle" font-size="11" fill="#fff" font-weight="700">${i+1}</text></g>`}).join('');
+$('#list').innerHTML=cs.map((c,i)=>{const t=c.top;return `<div class="item"><div>${t.photo?`<img src="${t.photo}" alt="">`:'<div style="width:56px;height:56px;border-radius:8px;background:var(--bd);display:grid;place-items:center">🕳️</div>'}</div>
+<div class="m"><b>#${i+1}</b> <span class="pill t-${c.tier}">${c.tier} · ${c.score}</span> <span class="small">${SLA[c.tier]}</span>
+<div class="small">${t.dep} cm deep × ${t.wid} cm · ${esc(t.road)} · ${esc(t.traf)} traffic · ${c.items.length} report(s) (${[...new Set(c.items.map(x=>x.src))].join(', ')})</div>
+<div class="small">${c.lat.toFixed(5)}, ${c.lon.toFixed(5)} ${t.note?'· '+esc(t.note):''}</div>
+<div style="margin-top:4px"><span class="small">Status: <b>${c.status}</b></span> ${['Open','Assigned','Fixed'].map(s=>`<button data-i="${i}" data-s="${s}">${s}</button>`).join(' ')}</div></div></div>`}).join('');
+document.querySelectorAll('#list button').forEach(b=>b.onclick=()=>{cs[+b.dataset.i].items.forEach(r=>r.status=b.dataset.s);save();draw();stats()})}
+function stats(){const cs=clusters(),o=cs.filter(c=>c.status!=='Fixed');
+$('#stats').innerHTML=`<div><b>${R.length}</b>reports</div><div><b>${cs.length}</b>unique potholes</div><div><b>${o.filter(c=>c.tier==='Critical').length}</b>critical open</div><div><b>${cs.filter(c=>c.status==='Fixed').length}</b>fixed</div>`}
+$('#bDemo').onclick=()=>{const c={lat:23.0,lon:72.5};const roads=['residential','arterial','highway'],tr=['low','med','high'];
+for(let i=0;i<14;i++){const lat=c.lat+Math.random()*.004,lon=c.lon+Math.random()*.005;const n=Math.random()<.3?2:1;
+for(let k=0;k<n;k++)R.push({id:Date.now()+Math.random(),t:Date.now(),lat:lat+k*3e-5,lon,dep:+(1+Math.random()*11).toFixed(1),wid:Math.round(15+Math.random()*90),road:roads[i%3],traf:tr[(i*2)%3],src:k?'sensor':'citizen',note:'',status:'Open'})}
+save();draw();stats()};
+$('#bClr').onclick=()=>{if(confirm('Delete all reports?')){R=[];save();draw();stats()}};
+$('#bCsv').onclick=()=>{const rows=[['rank','tier','score','lat','lon','depth_cm','width_cm','road','traffic','reports','status']];
+clusters().forEach((c,i)=>rows.push([i+1,c.tier,c.score,c.lat,c.lon,c.top.dep,c.top.wid,c.top.road,c.top.traf,c.items.length,c.status]));
+$('#csv').value=rows.map(r=>r.join(',')).join('\n');$('#csv').classList.remove('hide');$('#bCopy').classList.remove('hide')};
+$('#bCopy').onclick=async()=>{try{await navigator.clipboard.writeText($('#csv').value);toast('Copied')}catch(e){$('#csv').select();toast('Press copy on the selected text')}};
+stats();
+</script>
+</body>
+</html>
